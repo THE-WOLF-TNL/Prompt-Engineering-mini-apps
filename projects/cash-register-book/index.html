@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pokladničná kniha</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; background:#0b1220; color:#e8eefc; }
+    .wrap { max-width: 1020px; margin: 0 auto; padding: 24px; }
+    .card { background:#121b2f; border:1px solid #223255; border-radius: 14px; padding: 18px; }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    h2 { margin: 16px 0 10px; font-size: 16px; opacity: .95; }
+    h3 { margin: 12px 0 8px; font-size: 14px; opacity: .95; }
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    @media (max-width: 900px){ .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 760px){ .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+    label { display:block; font-size: 12px; opacity: .85; margin-bottom: 6px; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid #2a3b63; background:#0e1730; color:#e8eefc;
+      outline: none;
+    }
+    input:focus { border-color:#4a72ff; }
+
+    .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .btn {
+      cursor:pointer; border: 1px solid #2a3b63; background:#162446; color:#e8eefc;
+      padding: 10px 12px; border-radius: 10px; font-weight: 600;
+    }
+    .btn:hover { border-color:#4a72ff; }
+    .btn-danger { background:#3a1a22; border-color:#6b2a3a; }
+    .btn-ghost { background:#0e1730; border-color:#223255; }
+    .summary { display:grid; gap:10px; }
+    .pill { display:flex; justify-content:space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; background:#0e1730; border:1px solid #223255; }
+    .pill b { font-size: 14px; }
+    .pill span { font-variant-numeric: tabular-nums; }
+    .muted { opacity: .75; font-size: 12px; }
+    .history-item { display:flex; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #223255; background:#0e1730; border-radius: 12px; }
+    .warn { border-color:#a06a00 !important; }
+    .bad { border-color:#b33a4f !important; }
+    .inline-actions { display:flex; gap:10px; margin-top:10px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Pokladničná kniha – Hotovosť / Karta / Odvod</h1>
+      <div class="muted">
+        Hotovosť počítaš z mincí a bankoviek. Kartu zadáš podľa terminálu.
+        Appka rozdelí tržbu a vyráta zostatok pre ďalšiu zmenu.
+      </div>
+
+      <h2>0) Pokladník</h2>
+      <div class="grid grid-2">
+        <div>
+          <label for="cashierName">Meno pokladníka</label>
+          <input id="cashierName" placeholder="napr. František" />
+          <div class="inline-actions">
+            <button class="btn" id="saveDefaultCashierBtn">Uložiť meno ako default</button>
+            <button class="btn btn-danger" id="clearDefaultCashierBtn">Zmazať default meno</button>
+          </div>
+          <div class="muted">Default meno sa uloží v prehliadači (LocalStorage).</div>
+        </div>
+      </div>
+
+      <h2>1) Počítanie hotovosti v kase (mince + bankovky)</h2>
+
+      <div class="grid grid-2">
+        <div>
+          <h3>Mince (počet kusov)</h3>
+          <div class="grid grid-4" id="coinInputs"></div>
+        </div>
+        <div>
+          <h3>Bankovky (počet kusov)</h3>
+          <div class="grid grid-4" id="noteInputs"></div>
+        </div>
+      </div>
+
+      <div class="summary" style="margin-top:12px;">
+        <div class="pill"><b>Spočítaná hotovosť v kase</b><span id="countedCash">0.00 €</span></div>
+      </div>
+
+      <h2>2) Tržba + karta + odvod + zostatok</h2>
+      <div class="grid grid-2">
+        <div>
+          <label for="startingCash">Počiatočný zostatok v kase na začiatku zmeny (€)</label>
+          <input id="startingCash" inputmode="decimal" placeholder="napr. 300" />
+          <div class="inline-actions">
+            <button class="btn" id="saveDefaultStartBtn">Uložiť ako default</button>
+            <button class="btn btn-danger" id="clearDefaultStartBtn">Zmazať default</button>
+          </div>
+          <div class="muted">Default sa uloží v prehliadači. Pri resete sa predvyplní.</div>
+        </div>
+
+        <div>
+          <label for="totalSales">Tržba spolu (hotovosť + karta) (€)</label>
+          <input id="totalSales" inputmode="decimal" placeholder="napr. 1200" />
+        </div>
+        <div>
+          <label for="cardTerminal">Karta z terminálu (€)</label>
+          <input id="cardTerminal" inputmode="decimal" placeholder="napr. 400" />
+        </div>
+        <div>
+          <label for="cashDrop">Odvod (koľko odovzdávam z hotovosti) (€)</label>
+          <input id="cashDrop" inputmode="decimal" placeholder="napr. 500" />
+        </div>
+        <div>
+          <label for="note">Poznámka (voliteľné)</label>
+          <input id="note" placeholder="napr. zmena, dátum, meno" />
+        </div>
+      </div>
+
+      <h2>Výsledky</h2>
+      <div class="summary">
+        <div class="pill"><b>Hotovosť z predaja (Tržba − Karta)</b><span id="cashFromSales">0.00 €</span></div>
+        <div class="pill"><b>Očakávaný zostatok v kase (Počiatočný + Hotovosť z predaja − Odvod)</b><span id="expectedCashLeft">0.00 €</span></div>
+        <div class="pill" id="diffPill"><b>Rozdiel (Spočítané − Očakávané)</b><span id="diffCash">0.00 €</span></div>
+        <div class="pill"><b>Kontrola: Hotovosť z predaja + Karta</b><span id="checkTotal">0.00 €</span></div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="row">
+        <button class="btn" id="saveBtn">Uložiť záznam</button>
+        <button class="btn btn-ghost" id="resetSalesBtn">Reset len tržby</button>
+        <button class="btn btn-danger" id="resetAllBtn">Reset všetko</button>
+
+        <button class="btn" id="exportTodayCsvBtn" style="margin-left:auto;">Export CSV (dnes)</button>
+        <button class="btn btn-ghost" id="exportAllCsvBtn">Export CSV (všetko)</button>
+
+        <div class="muted" id="status"></div>
+      </div>
+
+      <h2>História (lokálne v prehliadači)</h2>
+      <div class="grid" id="history"></div>
+      <div class="muted">Export CSV (dnes) vyexportuje iba záznamy dnešného dňa podľa času v tvojom PC.</div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Helpers ----
+    const fmtEUR = (n) => (isFinite(n) ? n : 0).toFixed(2) + " €";
+    const toNumber = (v) => {
+      if (v === null || v === undefined) return 0;
+      const s = String(v).trim().replace(",", ".");
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const toInt = (v) => {
+      const n = Math.floor(toNumber(v));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const csvEscape = (value) => {
+      const s = value === null || value === undefined ? "" : String(value);
+      if (/[",\n;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const isSameLocalDay = (tsA, tsB) => {
+      const a = new Date(tsA);
+      const b = new Date(tsB);
+      return a.getFullYear() === b.getFullYear()
+          && a.getMonth() === b.getMonth()
+          && a.getDate() === b.getDate();
+    };
+
+    // ---- Denominations ----
+    const COINS = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2];
+    const NOTES = [5, 10, 20, 50, 100, 200, 500];
+
+    // ---- Storage keys ----
+    const START_DEFAULT_KEY = "cashbook_default_starting_cash_v1";
+    const CASHIER_DEFAULT_KEY = "cashbook_default_cashier_name_v1";
+    const ENTRIES_KEY = "cashbook_entries_v6";
+
+    // ---- DOM ----
+    const coinInputsEl = document.getElementById("coinInputs");
+    const noteInputsEl = document.getElementById("noteInputs");
+    const countedCashEl = document.getElementById("countedCash");
+
+    const cashierNameEl = document.getElementById("cashierName");
+    const saveDefaultCashierBtn = document.getElementById("saveDefaultCashierBtn");
+    const clearDefaultCashierBtn = document.getElementById("clearDefaultCashierBtn");
+
+    const startingCashEl = document.getElementById("startingCash");
+    const saveDefaultStartBtn = document.getElementById("saveDefaultStartBtn");
+    const clearDefaultStartBtn = document.getElementById("clearDefaultStartBtn");
+
+    const totalSalesEl = document.getElementById("totalSales");
+    const cardTerminalEl = document.getElementById("cardTerminal");
+    const cashDropEl = document.getElementById("cashDrop");
+    const noteEl = document.getElementById("note");
+
+    const cashFromSalesEl = document.getElementById("cashFromSales");
+    const expectedCashLeftEl = document.getElementById("expectedCashLeft");
+    const diffCashEl = document.getElementById("diffCash");
+    const diffPillEl = document.getElementById("diffPill");
+    const checkTotalEl = document.getElementById("checkTotal");
+
+    const statusEl = document.getElementById("status");
+    const historyEl = document.getElementById("history");
+
+    const saveBtn = document.getElementById("saveBtn");
+    const resetSalesBtn = document.getElementById("resetSalesBtn");
+    const resetAllBtn = document.getElementById("resetAllBtn");
+    const exportTodayCsvBtn = document.getElementById("exportTodayCsvBtn");
+    const exportAllCsvBtn = document.getElementById("exportAllCsvBtn");
+
+    // ---- State ----
+    const state = {
+      coinCounts: Object.fromEntries(COINS.map(v => [String(v), 0])),
+      noteCounts: Object.fromEntries(NOTES.map(v => [String(v), 0])),
+      cashierName: "",
+      startingCash: 300,
+      totalSales: 0,
+      cardTerminal: 0,
+      cashDrop: 0,
+      note: ""
+    };
+
+    // ---- Default load/save ----
+    function loadDefaultStartingCash() {
+      const raw = localStorage.getItem(START_DEFAULT_KEY);
+      if (raw === null) return 300;
+      return toNumber(raw);
+    }
+    function saveDefaultStartingCash(value) {
+      localStorage.setItem(START_DEFAULT_KEY, String(value));
+    }
+    function clearDefaultStartingCash() {
+      localStorage.removeItem(START_DEFAULT_KEY);
+    }
+
+    function loadDefaultCashierName() {
+      const raw = localStorage.getItem(CASHIER_DEFAULT_KEY);
+      return raw === null ? "" : String(raw);
+    }
+    function saveDefaultCashierName(name) {
+      localStorage.setItem(CASHIER_DEFAULT_KEY, String(name || "").trim());
+    }
+    function clearDefaultCashierName() {
+      localStorage.removeItem(CASHIER_DEFAULT_KEY);
+    }
+
+    // ---- Build inputs ----
+    function buildDenomInputs() {
+      coinInputsEl.innerHTML = "";
+      for (const v of COINS) {
+        const id = `coin_${String(v).replace(".", "_")}`;
+        const wrapper = document.createElement("div");
+        const label = v < 1 ? `${v.toFixed(2)} €` : `${v}€`;
+        wrapper.innerHTML = `
+          <label for="${id}">${label} (ks)</label>
+          <input id="${id}" inputmode="numeric" placeholder="0" />
+        `;
+        wrapper.querySelector("input").addEventListener("input", (e) => {
+          state.coinCounts[String(v)] = toInt(e.target.value);
+          recalcAll();
+        });
+        coinInputsEl.appendChild(wrapper);
+      }
+
+      noteInputsEl.innerHTML = "";
+      for (const v of NOTES) {
+        const id = `note_${v}`;
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = `
+          <label for="${id}">${v}€ (ks)</label>
+          <input id="${id}" inputmode="numeric" placeholder="0" />
+        `;
+        wrapper.querySelector("input").addEventListener("input", (e) => {
+          state.noteCounts[String(v)] = toInt(e.target.value);
+          recalcAll();
+        });
+        noteInputsEl.appendChild(wrapper);
+      }
+    }
+
+    function calcCountedCash() {
+      const coinSum = COINS.reduce((sum, v) => sum + v * (state.coinCounts[String(v)] || 0), 0);
+      const noteSum = NOTES.reduce((sum, v) => sum + v * (state.noteCounts[String(v)] || 0), 0);
+      return coinSum + noteSum;
+    }
+
+    function recalcAll() {
+      const counted = calcCountedCash();
+      countedCashEl.textContent = fmtEUR(counted);
+
+      const start = state.startingCash;
+      const total = state.totalSales;
+      const card = state.cardTerminal;
+      const drop = state.cashDrop;
+
+      const cashFromSales = total - card;
+      const expectedCashLeft = start + cashFromSales - drop;
+      const diff = counted - expectedCashLeft;
+
+      cashFromSalesEl.textContent = fmtEUR(cashFromSales);
+      expectedCashLeftEl.textContent = fmtEUR(expectedCashLeft);
+      diffCashEl.textContent = fmtEUR(diff);
+      checkTotalEl.textContent = fmtEUR(cashFromSales + card);
+
+      diffPillEl.classList.remove("warn", "bad");
+      totalSalesEl.classList.remove("bad");
+      cardTerminalEl.classList.remove("bad");
+      cashDropEl.classList.remove("bad");
+
+      if (card > total) {
+        totalSalesEl.classList.add("bad");
+        cardTerminalEl.classList.add("bad");
+      }
+      if (expectedCashLeft < 0) {
+        cashDropEl.classList.add("bad");
+      }
+
+      const absDiff = Math.abs(diff);
+      if (absDiff > 0.009) diffPillEl.classList.add("warn");
+      if (absDiff >= 5) diffPillEl.classList.add("bad");
+    }
+
+    // ---- History ----
+    function loadHistory() {
+      const raw = localStorage.getItem(ENTRIES_KEY);
+      try { return raw ? JSON.parse(raw) : []; } catch { return []; }
+    }
+    function saveHistory(entries) {
+      localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+    }
+    function renderHistory() {
+      const entries = loadHistory().slice().reverse();
+      historyEl.innerHTML = "";
+
+      if (entries.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "Zatiaľ nič uložené.";
+        historyEl.appendChild(empty);
+        return;
+      }
+
+      for (const e of entries) {
+        const row = document.createElement("div");
+        row.className = "history-item";
+        row.innerHTML = `
+          <div>
+            <div><b>${new Date(e.ts).toLocaleString()}</b> <span class="muted">| Pokladník: ${csvEscape(e.cashierName || "")}</span></div>
+            <div class="muted">${e.note ? e.note : ""}</div>
+            <div class="muted">Počiatočný: ${fmtEUR(e.startingCash)} | Tržba: ${fmtEUR(e.totalSales)} | Karta: ${fmtEUR(e.cardTerminal)} | Odvod: ${fmtEUR(e.cashDrop)}</div>
+          </div>
+          <div style="text-align:right; font-variant-numeric: tabular-nums;">
+            <div>Spočítané v kase: <b>${fmtEUR(e.countedCash)}</b></div>
+            <div>Očak. zostatok: <b>${fmtEUR(e.expectedCashLeft)}</b></div>
+            <div>Rozdiel: <b>${fmtEUR(e.diff)}</b></div>
+          </div>
+        `;
+        historyEl.appendChild(row);
+      }
+    }
+
+    function status(msg) {
+      statusEl.textContent = msg;
+      setTimeout(() => { statusEl.textContent = ""; }, 2400);
+    }
+
+    // ---- Wire inputs ----
+    cashierNameEl.addEventListener("input", () => {
+      state.cashierName = cashierNameEl.value || "";
+    });
+
+    startingCashEl.addEventListener("input", () => {
+      state.startingCash = toNumber(startingCashEl.value);
+      recalcAll();
+    });
+    totalSalesEl.addEventListener("input", () => {
+      state.totalSales = toNumber(totalSalesEl.value);
+      recalcAll();
+    });
+    cardTerminalEl.addEventListener("input", () => {
+      state.cardTerminal = toNumber(cardTerminalEl.value);
+      recalcAll();
+    });
+    cashDropEl.addEventListener("input", () => {
+      state.cashDrop = toNumber(cashDropEl.value);
+      recalcAll();
+    });
+    noteEl.addEventListener("input", () => {
+      state.note = noteEl.value || "";
+    });
+
+    // ---- Default buttons ----
+    saveDefaultStartBtn.addEventListener("click", () => {
+      const v = toNumber(startingCashEl.value);
+      saveDefaultStartingCash(v);
+      status(`Default počiatočný zostatok uložený: ${fmtEUR(v)}`);
+    });
+
+    clearDefaultStartBtn.addEventListener("click", () => {
+      clearDefaultStartingCash();
+      state.startingCash = 300;
+      startingCashEl.value = "300";
+      recalcAll();
+      status("Default počiatočný zostatok zmazaný (vracia sa 300 €).");
+    });
+
+    saveDefaultCashierBtn.addEventListener("click", () => {
+      const name = (cashierNameEl.value || "").trim();
+      saveDefaultCashierName(name);
+      status(name ? `Default meno uložené: ${name}` : "Default meno uložené (prázdne).");
+    });
+
+    clearDefaultCashierBtn.addEventListener("click", () => {
+      clearDefaultCashierName();
+      cashierNameEl.value = "";
+      state.cashierName = "";
+      status("Default meno zmazané.");
+    });
+
+    // ---- Save entry ----
+    saveBtn.addEventListener("click", () => {
+      const countedCash = calcCountedCash();
+
+      const cashFromSales = state.totalSales - state.cardTerminal;
+      const expectedCashLeft = state.startingCash + cashFromSales - state.cashDrop;
+      const diff = countedCash - expectedCashLeft;
+
+      const entry = {
+        ts: Date.now(),
+        cashierName: (state.cashierName || "").trim(),
+        note: (state.note || "").trim(),
+        coinCounts: {...state.coinCounts},
+        noteCounts: {...state.noteCounts},
+        countedCash,
+        startingCash: state.startingCash,
+        totalSales: state.totalSales,
+        cardTerminal: state.cardTerminal,
+        cashDrop: state.cashDrop,
+        cashFromSales,
+        expectedCashLeft,
+        diff
+      };
+
+      const entries = loadHistory();
+      entries.push(entry);
+      saveHistory(entries);
+      renderHistory();
+      status("Uložené ✅");
+    });
+
+    // ---- Reset buttons ----
+    function resetSalesOnly() {
+      // keep coins/notes counts as-is
+      const defStart = loadDefaultStartingCash();
+      state.startingCash = defStart;
+      startingCashEl.value = String(defStart);
+
+      state.totalSales = 0; totalSalesEl.value = "";
+      state.cardTerminal = 0; cardTerminalEl.value = "";
+      state.cashDrop = 0; cashDropEl.value = "";
+      state.note = ""; noteEl.value = "";
+
+      recalcAll();
+      status("Reset tržby hotový (mince/bankovky ostali).");
+    }
+
+    function resetAll() {
+      for (const v of COINS) {
+        state.coinCounts[String(v)] = 0;
+        const id = `coin_${String(v).replace(".", "_")}`;
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      }
+      for (const v of NOTES) {
+        state.noteCounts[String(v)] = 0;
+        const el = document.getElementById(`note_${v}`);
+        if (el) el.value = "";
+      }
+      resetSalesOnly();
+      status("Reset všetko hotový.");
+    }
+
+    resetSalesBtn.addEventListener("click", resetSalesOnly);
+    resetAllBtn.addEventListener("click", resetAll);
+
+    // ---- CSV export ----
+    function buildCsv(entries) {
+      const header = [
+        "timestamp",
+        "datetime_local",
+        "cashier_name",
+        "note",
+        "starting_cash",
+        "total_sales",
+        "card_terminal",
+        "cash_from_sales",
+        "cash_drop",
+        "expected_cash_left",
+        "counted_cash",
+        "diff",
+        ...COINS.map(v => `coin_${String(v).replace(".","_")}_count`),
+        ...NOTES.map(v => `note_${v}_count`)
+      ];
+
+      const lines = [header.join(";")];
+
+      for (const e of entries) {
+        const dt = new Date(e.ts);
+        const localDt = dt.toLocaleString();
+
+        const base = [
+          e.ts,
+          localDt,
+          e.cashierName || "",
+          e.note || "",
+          (e.startingCash ?? 0).toFixed(2),
+          (e.totalSales ?? 0).toFixed(2),
+          (e.cardTerminal ?? 0).toFixed(2),
+          (e.cashFromSales ?? 0).toFixed(2),
+          (e.cashDrop ?? 0).toFixed(2),
+          (e.expectedCashLeft ?? 0).toFixed(2),
+          (e.countedCash ?? 0).toFixed(2),
+          (e.diff ?? 0).toFixed(2),
+        ];
+
+        const coinCounts = COINS.map(v => (e.coinCounts && e.coinCounts[String(v)] ? e.coinCounts[String(v)] : 0));
+        const noteCounts = NOTES.map(v => (e.noteCounts && e.noteCounts[String(v)] ? e.noteCounts[String(v)] : 0));
+
+        const row = [...base, ...coinCounts, ...noteCounts].map(csvEscape).join(";");
+        lines.push(row);
+      }
+
+      return lines.join("\n");
+    }
+
+    function downloadCsv(csvText, filename) {
+      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    }
+
+    exportAllCsvBtn.addEventListener("click", () => {
+      const entries = loadHistory();
+      if (entries.length === 0) {
+        status("Nie je čo exportovať (história je prázdna).");
+        return;
+      }
+      const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+      const csv = buildCsv(entries);
+      downloadCsv(csv, `pokladnicna-kniha_ALL_${stamp}.csv`);
+      status("Export CSV (všetko) stiahnutý ✅");
+    });
+
+    exportTodayCsvBtn.addEventListener("click", () => {
+      const entries = loadHistory();
+      if (entries.length === 0) {
+        status("Nie je čo exportovať (história je prázdna).");
+        return;
+      }
+
+      const today = Date.now();
+      const todays = entries.filter(e => isSameLocalDay(e.ts, today));
+      if (todays.length === 0) {
+        status("Dnes nemáš žiadne uložené záznamy.");
+        return;
+      }
+
+      const yyyy = new Date(today).getFullYear();
+      const mm = String(new Date(today).getMonth() + 1).padStart(2, "0");
+      const dd = String(new Date(today).getDate()).padStart(2, "0");
+
+      const csv = buildCsv(todays);
+      downloadCsv(csv, `pokladnicna-kniha_TODAY_${yyyy}-${mm}-${dd}.csv`);
+      status("Export CSV (dnes) stiahnutý ✅");
+    });
+
+    // ---- Init ----
+    buildDenomInputs();
+
+    const defStart = loadDefaultStartingCash();
+    state.startingCash = defStart;
+    startingCashEl.value = String(defStart);
+
+    const defCashier = loadDefaultCashierName();
+    state.cashierName = defCashier;
+    cashierNameEl.value = defCashier;
+
+    recalcAll();
+    renderHistory();
+  </script>
+</body>
+</html>
